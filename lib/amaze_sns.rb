@@ -5,6 +5,7 @@ require File.dirname(__FILE__) + "/amaze/subscription"
 require File.dirname(__FILE__) + "/amaze/helpers"
 require File.dirname(__FILE__) + "/amaze/request"
 require File.dirname(__FILE__) + "/amaze/exceptions"
+require File.dirname(__FILE__) + "/amaze/verify"
 require "eventmachine"
 require 'crack/xml'
 
@@ -42,8 +43,13 @@ class AmazeSNS
     @topics[topic.to_s] = Topic.new(topic) unless @topics.has_key?(topic)
     @topics[topic.to_s]
   end
-  
-  
+
+  # Validate that the message is correctly signed by Amazon.
+  # See verify.rb for more explanation.
+  def self.signature_valid?(msg, key)
+    Verify.signature_valid?(msg, key)
+  end
+
   def self.method_missing(id, *args, &blk)
     case(id.to_s)
     when /^list_(.*)/
