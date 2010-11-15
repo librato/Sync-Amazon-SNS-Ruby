@@ -30,8 +30,7 @@ string_to_sign = "GET
       signature = Base64.encode64(hmac.digest).chomp
       
       params['Signature'] = signature
-      querystring2 = params.collect { |key, value| [url_encode(key), url_encode(value)].join("=") }.join('&') # order doesn't matter for the actual request
-      
+
       unless defined?(EventMachine) && EventMachine.reactor_running?
         raise AmazeSNSRuntimeError, "In order to use this you must be running inside an eventmachine loop"
       end
@@ -40,8 +39,8 @@ string_to_sign = "GET
       
       deferrable = EM::DefaultDeferrable.new
       
-      @httpresponse ||= http_class.new("https://#{AmazeSNS.host}/?").get({
-        :query => querystring2, :timeout => 2
+      @httpresponse ||= http_class.new("https://#{AmazeSNS.host}/").get({
+        :query => params, :timeout => 2
       })
       @httpresponse.callback{
         begin
