@@ -25,36 +25,36 @@ string_to_sign = "GET
 /
 #{query_string}"
                 
-      hmac = HMAC::SHA256.new(AmazeSNS.skey)
-      hmac.update( string_to_sign )
-      signature = Base64.encode64(hmac.digest).chomp
-      
-      params['Signature'] = signature
+    hmac = HMAC::SHA256.new(AmazeSNS.skey)
+    hmac.update( string_to_sign )
+    signature = Base64.encode64(hmac.digest).chomp
+    
+    params['Signature'] = signature
 
-      unless defined?(EventMachine) && EventMachine.reactor_running?
-        raise AmazeSNSRuntimeError, "In order to use this you must be running inside an eventmachine loop"
-      end
-      
-      require 'em-http' unless defined?(EventMachine::HttpRequest)
-      
-      deferrable = EM::DefaultDeferrable.new
-      
-      @httpresponse ||= http_class.new("https://#{AmazeSNS.host}/").get({
-        :query => params, :timeout => 2
-      })
-      @httpresponse.callback{
-        begin
-          success_callback
-          deferrable.succeed     
-        rescue => e
-          deferrable.fail(e)
-        end 
-      }
-      @httpresponse.errback{ 
-        error_callback
-        deferrable.fail(AmazeSNSRuntimeError.new("A runtime error has occured: status code: #{@httpresponse.response_header.status}"))
-      }
-      deferrable
+    unless defined?(EventMachine) && EventMachine.reactor_running?
+      raise AmazeSNSRuntimeError, "In order to use this you must be running inside an eventmachine loop"
+    end
+    
+    require 'em-http' unless defined?(EventMachine::HttpRequest)
+    
+    deferrable = EM::DefaultDeferrable.new
+    
+    @httpresponse ||= http_class.new("https://#{AmazeSNS.host}/").get({
+                                                                        :query => params, :timeout => 2
+                                                                      })
+    @httpresponse.callback{
+      begin
+        success_callback
+        deferrable.succeed     
+      rescue => e
+        deferrable.fail(e)
+      end 
+    }
+    @httpresponse.errback{ 
+      error_callback
+      deferrable.fail(AmazeSNSRuntimeError.new("A runtime error has occured: status code: #{@httpresponse.response_header.status}"))
+    }
+    deferrable
   end
   
   def http_class
