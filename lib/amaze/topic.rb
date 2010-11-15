@@ -17,7 +17,9 @@ class Topic
     req_options={}
     req_options[:on_success] = blk if blk
     deferrable = Request.new(params, req_options).process
-    deferrable
+    deferrable.errback do |e|
+      raise e
+    end
   end
   
   # for running th EM loop w/o repetitions
