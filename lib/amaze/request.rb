@@ -40,7 +40,7 @@ string_to_sign = "GET
       
       deferrable = EM::DefaultDeferrable.new
       
-      @httpresponse ||= http_class.new("http://#{AmazeSNS.host}/?").get({
+      @httpresponse ||= http_class.new("https://#{AmazeSNS.host}/?").get({
         :query => querystring2, :timeout => 2
       })
       @httpresponse.callback{
