@@ -10,7 +10,7 @@ require 'em-http'
 
 class Request
   
-  attr_accessor :params, :options, :httpresponse
+  attr_accessor :params, :options
   
   def initialize(params, options={})
     @params = params
@@ -39,20 +39,19 @@ string_to_sign = "GET
     
     deferrable = EM::DefaultDeferrable.new
     
-    @httpresponse ||= http_class.new("https://#{AmazeSNS.host}/").get({
-                                                                        :query => params, :timeout => 2
-                                                                      })
-    @httpresponse.callback{
+    resp = http_class.new("https://#{AmazeSNS.host}/").get(:query => params,
+                                                           :timeout => 2)
+    resp.callback{
       begin
-        success_callback
-        deferrable.succeed     
+        success_callback(resp)
+        deferrable.succeed
       rescue => e
         deferrable.fail(e)
-      end 
+      end
     }
-    @httpresponse.errback{ 
-      error_callback
-      deferrable.fail(AmazeSNSRuntimeError.new("A runtime error has occured: status code: #{@httpresponse.response_header.status}"))
+    resp.errback{
+      error_callback(resp)
+      deferrable.fail(AmazeSNSRuntimeError.new("A runtime error has occured: status code: #{resp.response_header.status}"))
     }
     deferrable
   end
@@ -62,8 +61,8 @@ string_to_sign = "GET
   end
   
   
-  def success_callback
-    case @httpresponse.response_header.status
+  def success_callback(resp)
+    case resp.response_header.status
      when 403
        raise AuthorizationError
      when 500
@@ -73,17 +72,17 @@ string_to_sign = "GET
      when 404
        raise NotFoundError
      else
-       call_user_success_handler
+       call_user_success_handler(resp)
      end #end case
   end
   
-  def call_user_success_handler
-    @options[:on_success].call(httpresponse) if options[:on_success].respond_to?(:call)
+  def call_user_success_handler(resp)
+    @options[:on_success].call(resp) if options[:on_success].respond_to?(:call)
   end
   
-  def error_callback
+  def error_callback(resp)
     EventMachine.stop
-    raise AmazeSNSRuntimeError.new("A runtime error has occured: status code: #{@httpresponse.response_header.status}")
+    raise AmazeSNSRuntimeError.new("A runtime error has occured: status code: #{resp.response_header.status}")
   end
   
   
