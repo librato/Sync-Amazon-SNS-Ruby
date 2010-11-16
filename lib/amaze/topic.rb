@@ -13,22 +13,14 @@ class Topic
     @attributes = {}
   end
   
-  def generate_request(params,&blk)
-    req_options={}
-    req_options[:on_success] = blk if blk
-    deferrable = Request.new(params, req_options).process
-    deferrable.errback do |e|
-      raise e
+  def generate_request(params, &blk)
+    deferrable = Request.new(params).process
+    deferrable.callback do |resp|
+      yield(deferrable, resp)
     end
+    deferrable
   end
-  
-  # for running th EM loop w/o repetitions
-  def reactor(&blk)
-    EM.run do
-      instance_eval(&blk)
-    end
-  end
-  
+
   def create
     params = {
       'Name' => "#{@topic}",
@@ -38,22 +30,18 @@ class Topic
       'Timestamp' => Time.now.iso8601,
       'AWSAccessKeyId' => AmazeSNS.akey
      }
-     
-     reactor{
-       generate_request(params) do |response|
-         parsed_response = Crack::XML.parse(response.response)
-         @arn = parsed_response["CreateTopicResponse"]["CreateTopicResult"]["TopicArn"]
-         AmazeSNS.topics[@topic.to_s] = self # add to hash
-         AmazeSNS.topics.rehash
-         EM.stop
-       end
-     }
-    @arn
+
+    generate_request(params) do |dfr, response|
+      parsed_response = Crack::XML.parse(response.response)
+      @arn = parsed_response["CreateTopicResponse"]["CreateTopicResult"]["TopicArn"]
+      AmazeSNS.topics[@topic.to_s] = self # add to hash
+      AmazeSNS.topics.rehash
+      dfr.succeed(self)
+    end
   end
-  
+
   # delete topic
   def delete
-    parsed_response = ''
     params = {
       'TopicArn' => "#{arn}",
       'Action' => 'DeleteTopic',
@@ -62,18 +50,15 @@ class Topic
       'Timestamp' => Time.now.iso8601,
       'AWSAccessKeyId' => AmazeSNS.akey
      }
-    
-     reactor{
-       generate_request(params) do |response|
-         parsed_response = Crack::XML.parse(response.response)
-         AmazeSNS.topics.delete("#{@topic}")
-         AmazeSNS.topics.rehash
-         EM.stop
-        end
-      }
-    parsed_response
+
+    generate_request(params) do |dfr, response|
+      parsed_response = Crack::XML.parse(response.response)
+      AmazeSNS.topics.delete("#{@topic}")
+      AmazeSNS.topics.rehash
+      dfr.succeed(parsed_response)
+    end
   end
-  
+
   # get attributes for topic from remote sns server
   # TopicArn -- the topic's ARN 
   # Owner -- the AWS account ID of the topic's owner 
@@ -81,7 +66,6 @@ class Topic
   # DisplayName -- the human-readable name used in the "From" field for notifications to email and email-json endpoints 
   
   def attrs
-    outcome = nil
     params = {
       'TopicArn' => "#{arn}",
       'Action' => 'GetTopicAttributes',
@@ -90,19 +74,16 @@ class Topic
       'Timestamp' => Time.now.iso8601,
       'AWSAccessKeyId' => AmazeSNS.akey
      }
- 
-     reactor{
-       generate_request(params) do |response|
-         parsed_response = Crack::XML.parse(response.response) 
-         res = parsed_response['GetTopicAttributesResponse']['GetTopicAttributesResult']['Attributes']["entry"]
-         outcome = make_hash(res) #res["entry"] is an array of hashes - need to turn it into hash with key value
-         self.attributes = outcome
-         EM.stop
-        end
-     }
-     outcome
+
+    generate_request(params) do |dfr, response|
+      parsed_response = Crack::XML.parse(response.response) 
+      res = parsed_response['GetTopicAttributesResponse']['GetTopicAttributesResult']['Attributes']["entry"]
+      outcome = make_hash(res) #res["entry"] is an array of hashes - need to turn it into hash with key value
+      self.attributes = outcome
+      dfr.succeed(outcome)
+    end
   end
-  
+
   # The SetTopicAttributes action allows a topic owner to set an attribute of the topic to a new value.
   # only following attributes can be set:
   # TopicArn -- the topic's ARN 
@@ -111,7 +92,6 @@ class Topic
   # DisplayName -- the human-readable name used in the "From" field for notifications to email and email-json endpoints
   
   def set_attrs(opts)
-    outcome = nil
     params = {
       'AttributeName' => "#{opts[:name]}",
       'AttributeValue' => "#{opts[:value]}",
@@ -122,21 +102,17 @@ class Topic
       'Timestamp' => Time.now.iso8601,
       'AWSAccessKeyId' => AmazeSNS.akey
      }
-     
-     reactor{
-      generate_request(params) do |response|
-        parsed_response = Crack::XML.parse(response.response) 
-        outcome = parsed_response['SetTopicAttributesResponse']['ResponseMetadata']['RequestId']
-        EM.stop
-      end
-    }
-    outcome
+
+    generate_request(params) do |dfr, response|
+      parsed_response = Crack::XML.parse(response.response) 
+      outcome = parsed_response['SetTopicAttributesResponse']['ResponseMetadata']['RequestId']
+      dfr.succeed(outcome)
+    end
   end
-  
+
   # subscribe method
   def subscribe(opts)
     raise InvalidOptions unless ( !(opts.empty?) && opts.instance_of?(Hash) )
-    res=''
     params = {
       'TopicArn' => "#{arn}",
       'Endpoint' => "#{opts[:endpoint]}",
@@ -147,20 +123,16 @@ class Topic
       'Timestamp' => Time.now.iso8601,
       'AWSAccessKeyId' => AmazeSNS.akey
     }
-    
-    reactor{
-      generate_request(params) do |response|
-        parsed_response = Crack::XML.parse(response.response)
-        res = parsed_response['SubscribeResponse']['SubscribeResult']['SubscriptionArn']
-        EM.stop
-      end
-    }
-    res
+
+    generate_request(params) do |dfr, response|
+      parsed_response = Crack::XML.parse(response.response)
+      res = parsed_response['SubscribeResponse']['SubscribeResult']['SubscriptionArn']
+      dfr.succeed(res)
+    end
   end
   
   def unsubscribe(id)
     raise InvalidOptions unless ( !(id.empty?) && id.instance_of?(String) )
-    res=''
     params = {
       'SubscriptionArn' => "#{id}",
       'Action' => 'Unsubscribe',
@@ -169,21 +141,17 @@ class Topic
       'Timestamp' => Time.now.iso8601,
       'AWSAccessKeyId' => AmazeSNS.akey
     }
-    
-    reactor{
-      generate_request(params) do |response|
-        parsed_response = Crack::XML.parse(response.response)
-        res = parsed_response['UnsubscribeResponse']['ResponseMetadata']['RequestId']
-        EM.stop
-      end
-    }
-    res
+
+    generate_request(params) do |dfr, response|
+      parsed_response = Crack::XML.parse(response.response)
+      res = parsed_response['UnsubscribeResponse']['ResponseMetadata']['RequestId']
+      dfr.succeed(res)
+    end
   end
   
   
   # grabs list of subscriptions for this topic only
   def subscriptions
-    nh={}
     params = {
       'TopicArn' => "#{arn}",
       'Action' => 'ListSubscriptionsByTopic',
@@ -192,30 +160,28 @@ class Topic
       'Timestamp' => Time.now.iso8601,
       'AWSAccessKeyId' => AmazeSNS.akey
     }
-    
-    reactor{
-       generate_request(params) do |response|
-         parsed_response = Crack::XML.parse(response.response)
-         arr = parsed_response['ListSubscriptionsByTopicResponse']['ListSubscriptionsByTopicResult']['Subscriptions']['member'] unless (parsed_response['ListSubscriptionsByTopicResponse']['ListSubscriptionsByTopicResult']['Subscriptions'].nil?)
 
-         if !(arr.nil?) && (arr.instance_of?(Array))
-           #temp fix for now
-           nh = arr.inject({}) do |h,v|
-             key = v["SubscriptionArn"].to_s
-             value = v
-             h[key.to_s] = value
-             h
-           end
-         elsif !(arr.nil?) && (arr.instance_of?(Hash))
-           # to deal with one subscription issue
-           key = arr["SubscriptionArn"]
-           arr.delete("SubscriptionArn")
-           nh[key.to_s] = arr
-         end
-         EM.stop
-       end
-    }
-    nh
+    generate_request(params) do |dfr, response|
+      nh = {}
+      parsed_response = Crack::XML.parse(response.response)
+      arr = parsed_response['ListSubscriptionsByTopicResponse']['ListSubscriptionsByTopicResult']['Subscriptions']['member'] unless (parsed_response['ListSubscriptionsByTopicResponse']['ListSubscriptionsByTopicResult']['Subscriptions'].nil?)
+
+      if !(arr.nil?) && (arr.instance_of?(Array))
+        #temp fix for now
+        nh = arr.inject({}) do |h,v|
+          key = v["SubscriptionArn"].to_s
+          value = v
+          h[key.to_s] = value
+          h
+        end
+      elsif !(arr.nil?) && (arr.instance_of?(Hash))
+        # to deal with one subscription issue
+        key = arr["SubscriptionArn"]
+        arr.delete("SubscriptionArn")
+        nh[key.to_s] = arr
+      end
+      dfr.succeed(nh)
+    end
   end
   
   # The AddPermission action adds a statement to a topic's access control policy, granting access for the 
@@ -223,7 +189,6 @@ class Topic
   
   def add_permission(opts)
     raise InvalidOptions unless ( !(opts.empty?) && opts.instance_of?(Hash) )
-    res=''
     params = {
       'TopicArn' => "#{arn}",
       'Label' => "#{opts[:label]}",
@@ -235,21 +200,17 @@ class Topic
       'Timestamp' => Time.now.iso8601,
       'AWSAccessKeyId' => AmazeSNS.akey
     }
-    
-    reactor{
-      generate_request(params) do |response|
-        parsed_response = Crack::XML.parse(response.response)
-        res = parsed_response['AddPermissionResponse']['ResponseMetadata']['RequestId']
-        EM.stop
-      end
-    }
-    res
+
+    generate_request(params) do |dfr, response|
+      parsed_response = Crack::XML.parse(response.response)
+      res = parsed_response['AddPermissionResponse']['ResponseMetadata']['RequestId']
+      dfr.succeed(res)
+    end
   end
   
   # The RemovePermission action removes a statement from a topic's access control policy. 
   def remove_permission(label)
     raise InvalidOptions unless ( !(label.empty?) && label.instance_of?(String) )
-    res=''
     params = {
       'TopicArn' => "#{arn}",
       'Label' => "#{label}",
@@ -259,21 +220,17 @@ class Topic
       'Timestamp' => Time.now.iso8601,
       'AWSAccessKeyId' => AmazeSNS.akey
     }
-    
-    reactor{
-      generate_request(params) do |response|
-        parsed_response = Crack::XML.parse(response.response)
-        res = parsed_response['RemovePermissionResponse']['ResponseMetadata']['RequestId']
-        EM.stop
-      end
-    }
-    res
+
+    generate_request(params) do |dfr, response|
+      parsed_response = Crack::XML.parse(response.response)
+      res = parsed_response['RemovePermissionResponse']['ResponseMetadata']['RequestId']
+      dfr.succeed(res)
+    end
   end
   
   
   def publish(msg, subject='My First Message')
     raise InvalidOptions unless ( !(msg.empty?) && msg.instance_of?(String) )
-    res=''
     params = {
       'Subject' => subject,
       'TopicArn' => "#{arn}",
@@ -284,20 +241,16 @@ class Topic
       'Timestamp' => Time.now.iso8601,
       'AWSAccessKeyId' => AmazeSNS.akey
     }
-    
-    reactor{
-      generate_request(params) do |response|
-        parsed_response = Crack::XML.parse(response.response)
-        res = parsed_response['PublishResponse']['PublishResult']['MessageId']
-        EM.stop
-      end
-    }
-    res
+
+    generate_request(params) do |dfr, response|
+      parsed_response = Crack::XML.parse(response.response)
+      res = parsed_response['PublishResponse']['PublishResult']['MessageId']
+      dfr.succeed(res)
+    end
   end
   
   def confirm_subscription(token)
     raise InvalidOptions unless ( !(token.empty?) && token.instance_of?(String) )
-    arr=[]
     params = {
       'TopicArn' => "#{arn}",
       'Token' => "#{token}",
@@ -307,17 +260,14 @@ class Topic
       'Timestamp' => Time.now.iso8601,
       'AWSAccessKeyId' => AmazeSNS.akey
     }
-    
-    reactor{
-      generate_request(params) do |response|
-        parsed_response = Crack::XML.parse(response.response)
-        resp = parsed_response['ConfirmSubscriptionResponse']['ConfirmSubscriptionResult']['SubscriptionArn']
-        id = parsed_response['ConfirmSubscriptionResponse']['ResponseMetadata']['RequestId']
-        arr = [resp,id]
-        EM.stop
-      end
-    }
-    arr
+
+    generate_request(params) do |dfr, response|
+      parsed_response = Crack::XML.parse(response.response)
+      resp = parsed_response['ConfirmSubscriptionResponse']['ConfirmSubscriptionResult']['SubscriptionArn']
+      id = parsed_response['ConfirmSubscriptionResponse']['ResponseMetadata']['RequestId']
+      arr = [resp,id]
+      dfr.succeed(arr)
+    end
   end
   
   

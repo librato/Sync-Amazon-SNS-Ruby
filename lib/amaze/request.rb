@@ -9,11 +9,10 @@ require 'em-http'
 
 class Request
 
-  attr_accessor :params, :options
+  attr_accessor :params
 
-  def initialize(params, options={})
+  def initialize(params)
     @params = params
-    @options = options
   end
 
   def process
@@ -42,15 +41,13 @@ string_to_sign = "GET
                                                            :timeout => 2)
     resp.callback{
       begin
-        success_callback(resp)
-        deferrable.succeed
+        success_callback(resp, deferrable)
       rescue => e
         deferrable.fail(e)
       end
     }
     resp.errback{
-      error_callback(resp)
-      deferrable.fail(AmazeSNSRuntimeError.new("A runtime error has occured: status code: #{resp.response_header.status}"))
+      error_callback(resp, deferrable)
     }
     deferrable
   end
@@ -59,8 +56,7 @@ string_to_sign = "GET
     EventMachine::HttpRequest
   end
 
-
-  def success_callback(resp)
+  def success_callback(resp, dfr)
     case resp.response_header.status
      when 403
        raise AuthorizationError
@@ -71,16 +67,13 @@ string_to_sign = "GET
      when 404
        raise NotFoundError
      else
-       call_user_success_handler(resp)
+       dfr.succeed(resp)
      end #end case
   end
 
-  def call_user_success_handler(resp)
-    @options[:on_success].call(resp) if options[:on_success].respond_to?(:call)
-  end
-
-  def error_callback(resp)
-    EventMachine.stop
-    raise AmazeSNSRuntimeError.new("A runtime error has occured: status code: #{resp.response_header.status}")
+  def error_callback(resp, dfr)
+    # Most likely a timeout if we get here. Anything valid in the response?
+    errmsg = "A runtime error has occurred. Timeout?"
+    dfr.fail(AmazeSNSRuntimeError.new(errmsg))
   end
 end
