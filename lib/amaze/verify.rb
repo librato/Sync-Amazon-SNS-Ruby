@@ -28,8 +28,6 @@ module Verify
     end
 
     raise "Key must be OpenSSL::PKey::RSA" unless key.class == OpenSSL::PKey::RSA
-
-    puts "params: #{params.inspect}"
     text = case params['Type']
            when 'Notification'
              canonical_notification(params)
