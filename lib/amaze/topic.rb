@@ -269,7 +269,15 @@ class Topic
       dfr.succeed(arr)
     end
   end
-  
+
+  # Define a synchronous version for each call.
+  %w{create delete attrs set_attrs subscribe unsubscribe subscriptions add_permission remove_permission publish confirm_subscription}.each do |func|
+    class_eval(%Q{
+        def sync_#{func}(*args)
+          run_sync(lambda {#{func}(*args)})
+        end
+      })
+  end
   
   
   private  
@@ -282,7 +290,22 @@ class Topic
       end
       hash
     end
-  
-  
-  
+
+    def run_sync(func_cb)
+      if EventMachine.reactor_running?
+        raise "Reactor loop cannot be running with synchronous calls."
+      end
+      result = nil
+      EM.run {
+        dfr = func_cb.call
+        dfr.callback do |r|
+          result = r
+          EM.stop
+        end
+        dfr.errback do |e|
+          raise e
+        end
+      }
+      result
+    end
 end
