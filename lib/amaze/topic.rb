@@ -14,11 +14,7 @@ class Topic
   end
   
   def generate_request(params, &blk)
-    deferrable = Request.new(params).process
-    deferrable.callback do |resp|
-      yield(deferrable, resp)
-    end
-    deferrable
+    yield(Request.new(params).process)
   end
 
   def create
@@ -31,12 +27,12 @@ class Topic
       'AWSAccessKeyId' => AmazeSNS.akey
      }
 
-    generate_request(params) do |dfr, response|
-      parsed_response = Crack::XML.parse(response.response)
+    generate_request(params) do |response|
+      parsed_response = Crack::XML.parse(response)
       @arn = parsed_response["CreateTopicResponse"]["CreateTopicResult"]["TopicArn"]
       AmazeSNS.topics[@topic.to_s] = self # add to hash
       AmazeSNS.topics.rehash
-      dfr.succeed(self)
+      self
     end
   end
 
@@ -51,11 +47,11 @@ class Topic
       'AWSAccessKeyId' => AmazeSNS.akey
      }
 
-    generate_request(params) do |dfr, response|
-      parsed_response = Crack::XML.parse(response.response)
+    generate_request(params) do |response|
+      parsed_response = Crack::XML.parse(response)
       AmazeSNS.topics.delete("#{@topic}")
       AmazeSNS.topics.rehash
-      dfr.succeed(parsed_response)
+      parsed_response
     end
   end
 
@@ -75,12 +71,11 @@ class Topic
       'AWSAccessKeyId' => AmazeSNS.akey
      }
 
-    generate_request(params) do |dfr, response|
-      parsed_response = Crack::XML.parse(response.response) 
+    generate_request(params) do |response|
+      parsed_response = Crack::XML.parse(response) 
       res = parsed_response['GetTopicAttributesResponse']['GetTopicAttributesResult']['Attributes']["entry"]
       outcome = make_hash(res) #res["entry"] is an array of hashes - need to turn it into hash with key value
       self.attributes = outcome
-      dfr.succeed(outcome)
     end
   end
 
@@ -103,10 +98,9 @@ class Topic
       'AWSAccessKeyId' => AmazeSNS.akey
      }
 
-    generate_request(params) do |dfr, response|
-      parsed_response = Crack::XML.parse(response.response) 
+    generate_request(params) do |response|
+      parsed_response = Crack::XML.parse(response) 
       outcome = parsed_response['SetTopicAttributesResponse']['ResponseMetadata']['RequestId']
-      dfr.succeed(outcome)
     end
   end
 
@@ -124,10 +118,9 @@ class Topic
       'AWSAccessKeyId' => AmazeSNS.akey
     }
 
-    generate_request(params) do |dfr, response|
-      parsed_response = Crack::XML.parse(response.response)
-      res = parsed_response['SubscribeResponse']['SubscribeResult']['SubscriptionArn']
-      dfr.succeed(res)
+    generate_request(params) do |response|
+      parsed_response = Crack::XML.parse(response)
+      parsed_response['SubscribeResponse']['SubscribeResult']['SubscriptionArn']
     end
   end
   
@@ -142,10 +135,9 @@ class Topic
       'AWSAccessKeyId' => AmazeSNS.akey
     }
 
-    generate_request(params) do |dfr, response|
-      parsed_response = Crack::XML.parse(response.response)
-      res = parsed_response['UnsubscribeResponse']['ResponseMetadata']['RequestId']
-      dfr.succeed(res)
+    generate_request(params) do |response|
+      parsed_response = Crack::XML.parse(response)
+      parsed_response['UnsubscribeResponse']['ResponseMetadata']['RequestId']
     end
   end
   
@@ -161,9 +153,9 @@ class Topic
       'AWSAccessKeyId' => AmazeSNS.akey
     }
 
-    generate_request(params) do |dfr, response|
+    generate_request(params) do |response|
       nh = {}
-      parsed_response = Crack::XML.parse(response.response)
+      parsed_response = Crack::XML.parse(response)
       arr = parsed_response['ListSubscriptionsByTopicResponse']['ListSubscriptionsByTopicResult']['Subscriptions']['member'] unless (parsed_response['ListSubscriptionsByTopicResponse']['ListSubscriptionsByTopicResult']['Subscriptions'].nil?)
 
       if !(arr.nil?) && (arr.instance_of?(Array))
@@ -180,7 +172,7 @@ class Topic
         arr.delete("SubscriptionArn")
         nh[key.to_s] = arr
       end
-      dfr.succeed(nh)
+      nh
     end
   end
   
@@ -201,10 +193,9 @@ class Topic
       'AWSAccessKeyId' => AmazeSNS.akey
     }
 
-    generate_request(params) do |dfr, response|
-      parsed_response = Crack::XML.parse(response.response)
-      res = parsed_response['AddPermissionResponse']['ResponseMetadata']['RequestId']
-      dfr.succeed(res)
+    generate_request(params) do |response|
+      parsed_response = Crack::XML.parse(response)
+      parsed_response['AddPermissionResponse']['ResponseMetadata']['RequestId']
     end
   end
   
@@ -221,10 +212,9 @@ class Topic
       'AWSAccessKeyId' => AmazeSNS.akey
     }
 
-    generate_request(params) do |dfr, response|
-      parsed_response = Crack::XML.parse(response.response)
-      res = parsed_response['RemovePermissionResponse']['ResponseMetadata']['RequestId']
-      dfr.succeed(res)
+    generate_request(params) do |response|
+      parsed_response = Crack::XML.parse(response)
+      parsed_response['RemovePermissionResponse']['ResponseMetadata']['RequestId']
     end
   end
   
@@ -242,10 +232,9 @@ class Topic
       'AWSAccessKeyId' => AmazeSNS.akey
     }
 
-    generate_request(params) do |dfr, response|
-      parsed_response = Crack::XML.parse(response.response)
-      res = parsed_response['PublishResponse']['PublishResult']['MessageId']
-      dfr.succeed(res)
+    generate_request(params) do |response|
+      parsed_response = Crack::XML.parse(response)
+      parsed_response['PublishResponse']['PublishResult']['MessageId']
     end
   end
   
@@ -261,26 +250,15 @@ class Topic
       'AWSAccessKeyId' => AmazeSNS.akey
     }
 
-    generate_request(params) do |dfr, response|
-      parsed_response = Crack::XML.parse(response.response)
+    generate_request(params) do |response|
+      parsed_response = Crack::XML.parse(response)
       resp = parsed_response['ConfirmSubscriptionResponse']['ConfirmSubscriptionResult']['SubscriptionArn']
       id = parsed_response['ConfirmSubscriptionResponse']['ResponseMetadata']['RequestId']
-      arr = [resp,id]
-      dfr.succeed(arr)
+      [resp,id]
     end
   end
 
-  # Define a synchronous version for each call.
-  %w{create delete attrs set_attrs subscribe unsubscribe subscriptions add_permission remove_permission publish confirm_subscription}.each do |func|
-    class_eval(%Q{
-        def sync_#{func}(*args)
-          run_sync(lambda {#{func}(*args)})
-        end
-      })
-  end
-  
-  
-  private  
+  private
     def make_hash(arr)
       hash = arr.inject({}) do |h, v|
         (v["key"] == "Policy")? value = JSON.parse(v["value"]) : value = v["value"]
@@ -289,23 +267,5 @@ class Topic
         h
       end
       hash
-    end
-
-    def run_sync(func_cb)
-      if EventMachine.reactor_running?
-        raise "Reactor loop cannot be running with synchronous calls."
-      end
-      result = nil
-      EM.run {
-        dfr = func_cb.call
-        dfr.callback do |r|
-          result = r
-          EM.stop
-        end
-        dfr.errback do |e|
-          raise e
-        end
-      }
-      result
     end
 end

@@ -1,4 +1,5 @@
-
+require "net/https"
+require "uri"
 require "hmac"
 require "hmac-sha2"
 require "cgi"
@@ -21,6 +22,19 @@ def canonical_querystring(params)
   return values.join("&")
 end
 
+def http_get(url, params)
+  uri = URI.parse(url)
+  qstr = canonical_querystring(params)
+
+  http = Net::HTTP.new(uri.host, uri.port)
+  http.use_ssl = true if uri.scheme == "https"  # enable SSL/TLS
+  http.verify_mode = OpenSSL::SSL::VERIFY_NONE # XXX: need to set ca_file
+  http.start {
+    http.request_get("#{uri.path}?#{qstr}") { |res|
+      res
+    }
+  }
+end
 
 def hash_to_query(hash)
   hash.collect do |key, value|

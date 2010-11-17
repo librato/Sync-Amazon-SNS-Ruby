@@ -32,3 +32,9 @@ class NotFoundError < AmazeSNSError
     'The requested resource is not found'
   end
 end
+
+class UnknownError < AmazeSNSError
+  def message
+    'The request threw an unknown error'
+  end
+end

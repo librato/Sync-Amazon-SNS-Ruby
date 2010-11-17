@@ -4,8 +4,6 @@ require 'crack/xml'
 require File.dirname(__FILE__) + "/helpers"
 require File.dirname(__FILE__) + "/exceptions"
 
-require 'em-http'
-
 
 class Request
 
@@ -29,51 +27,24 @@ string_to_sign = "GET
 
     params['Signature'] = signature
 
-    unless defined?(EventMachine) && EventMachine.reactor_running?
-      raise AmazeSNSRuntimeError, "In order to use this you must be running inside an eventmachine loop"
-    end
-
-    require 'em-http' unless defined?(EventMachine::HttpRequest)
-
-    deferrable = EM::DefaultDeferrable.new
-
-    resp = http_class.new("https://#{AmazeSNS.host}/").get(:query => params,
-                                                           :timeout => 2)
-    resp.callback{
-      begin
-        success_callback(resp, deferrable)
-      rescue => e
-        deferrable.fail(e)
-      end
-    }
-    resp.errback{
-      error_callback(resp, deferrable)
-    }
-    deferrable
+    resp = http_get("https://#{AmazeSNS.host}/", params)
+    handle_resp(resp)
   end
 
-  def http_class
-    EventMachine::HttpRequest
-  end
-
-  def success_callback(resp, dfr)
-    case resp.response_header.status
-     when 403
-       raise AuthorizationError
-     when 500
-       raise InternalError
-     when 400
-       raise InvalidParameterError
-     when 404
-       raise NotFoundError
-     else
-       dfr.succeed(resp)
-     end #end case
-  end
-
-  def error_callback(resp, dfr)
-    # Most likely a timeout if we get here. Anything valid in the response?
-    errmsg = "A runtime error has occurred. Timeout?"
-    dfr.fail(AmazeSNSRuntimeError.new(errmsg))
+  def handle_resp(resp)
+    case resp
+    when Net::HTTPForbidden
+      raise AuthorizationError
+    when Net::HTTPInternalServerError
+      raise InternalError
+    when Net::HTTPBadRequest
+      raise InvalidParameterError
+    when Net::HTTPNotFound
+      raise NotFoundError
+    when Net::HTTPOK
+      return resp.body
+    else
+      raise UnknownError
+    end #end case
   end
 end
